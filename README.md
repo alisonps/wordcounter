@@ -1,5 +1,7 @@
-* On remote migration section of: https://realpython.com/blog/python/flask-by-example-part-2-postgres-sqlalchemy-and-alembic/
+* On Text Processing of https://realpython.com/blog/python/flask-by-example-part-3-text-processing-with-requests-beautifulsoup-nltk/
 
-* Troubleshoot autoenv setup 
+* Troubleshoot autoenv setup
 
 * Read: https://www.fullstackpython.com/task-queues.html
+
+* source venv/bin/activate
