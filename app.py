@@ -23,7 +23,7 @@ def index():
 	results = {}
 	if request.method == "POST":
 		try:
-			url = request.form['url']
+			url = format_url(request.form['url'])
 			r = requests.get(url)
 		except:
 			errors.append(
@@ -63,6 +63,13 @@ def count_non_stop_words(words):
 	stop_words = set(stopwords.words('english'))
 	non_stop_words = [word for word in words if word.lower() not in stop_words]
 	return Counter(non_stop_words)
+
+def format_url(url):
+	contains_https = re.compile('https?:\/\/')
+	if not contains_https.match(url):
+		return "http://" + url
+	else:
+		return url
 
 if __name__ == '__main__':
 	app.run()
