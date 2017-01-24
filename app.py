@@ -8,50 +8,38 @@ from flask_sqlalchemy import SQLAlchemy
 from nltk.corpus import stopwords
 from collections import Counter
 from bs4 import BeautifulSoup
+from rq import Queue
+from rq.job import Job
+from worker import conn
 
 app = Flask(__name__)
 app.config.from_object(os.environ['APP_SETTINGS'])
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db = SQLAlchemy(app)
+
+q = Queue(connection=conn)
 
 from models import *
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-	errors = []
 	results = {}
 	if request.method == "POST":
-		try:
-			url = format_url(request.form['url'])
-			r = requests.get(url)
-		except:
-			errors.append(
-				"Unable to get URL. Please make sure it's valid and try again"
-			)
-		if r:
-			raw_text = BeautifulSoup(r.text, 'html.parser').get_text()
-			nltk.data.path.append('./nltk_data/')
-			raw_words = parse_words_from_text(raw_text)
-			raw_words_count = Counter(raw_words)
-			non_stop_words_count = count_non_stop_words(raw_words)
-			results = sorted(
-				non_stop_words_count.items(),
-				key = operator.itemgetter(1),
-				reverse = True
-			)
-			try:
-				result = Result(
-					url=url,
-					result_all=raw_words_count,
-					result_no_stop_words=non_stop_words_count
-				)
-				db.session.add(result)
-				db.session.commit()
-			except Exception, e:
-				errors.append(str(e))
-				errors.append("Unable to add item to database.")
-	return render_template('index.html', errors=errors, results=results)
+		url = format_url(request.form['url'])
+		job = q.enqueue_call(
+            func=count_and_save_words, args=(url,), result_ttl=5000
+		)
+		print(job.get_id())
+	return render_template('index.html', results=results)
+
+@app.route("/results/<job_key>", methods=['GET'])
+def get_results(job_key):
+	job = Job.fetch(job_key, connection=conn)
+	if job.is_finished:
+		return str(job.result), 200
+	else:
+		return "Nay!", 200
+
 
 def parse_words_from_text(raw_text):
 	tokens = nltk.word_tokenize(raw_text)
@@ -70,6 +58,35 @@ def format_url(url):
 		return "http://" + url
 	else:
 		return url
+
+def count_and_save_words(url):
+	errors = []
+	try:
+		r = requests.get(url)
+	except:
+		errors.append(
+			"Unable to get URL. Please make sure it's valid and try again"
+		)
+		return {"error": errors}
+
+	raw_text = BeautifulSoup(r.text, 'html.parser').get_text()
+	nltk.data.path.append('./nltk_data/')
+	raw_words = parse_words_from_text(raw_text)
+	raw_words_count = Counter(raw_words)
+	non_stop_words_count = count_non_stop_words(raw_words)
+
+	try:
+		result = Result(
+			url=url,
+			result_all=raw_words_count,
+			result_no_stop_words=non_stop_words_count
+		)
+		db.session.add(result)
+		db.session.commit()
+		return result.id
+	except Exception, e:
+		errors.append(str(e))
+		errors.append("Unable to add item to database.")
 
 if __name__ == '__main__':
 	app.run()
